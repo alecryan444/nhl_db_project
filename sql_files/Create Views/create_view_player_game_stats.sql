@@ -1,5 +1,5 @@
-drop view if exists v_player_game_stats;
-Create view v_player_game_stats as(
+drop table if exists d_game_player_stats;
+Create table d_game_player_stats as(
 with participants as (
         Select min(dateTime) dt,playerID, player_name, p.gamePk, r.abbreviation
         from f_game_play_players p
