@@ -1,7 +1,8 @@
-drop table if exists d_game_player_stats;
-Create table d_game_player_stats as(
-with participants as (
-        Select min(dateTime) dt,playerID, player_name, p.gamePk, r.abbreviation
+drop table if exists d_player_stats;
+
+create table d_player_stats as (
+    with participants as (
+        Select playerID, player_name, p.gamePk, r.abbreviation
         from f_game_play_players p
 
                  left join f_game_plays gp
@@ -10,10 +11,10 @@ with participants as (
                  left join d_team_rosters r
                            on r.id = p.playerID
 
-where p.gameType = 'R'
+        where p.gameType = 'R'
+        and period <  5
 
-group by 2,3,4,5
-),
+        group by 1, 2, 3, 4),
 
          goals as (Select playerID,
                           player_name,
@@ -32,8 +33,7 @@ group by 2,3,4,5
                                       on r.id = p.playerID
 
                    where event = 'Goal'
-                   and p.gameType = 'R'
-                   and period <  5),
+                    and period <5),
 
          goal_agg as (
              Select gamePk,
@@ -64,8 +64,7 @@ group by 2,3,4,5
                                       on r.id = p.playerID
 
                    where event in ('Shot')
-                   and p.gameType = 'R'
-                   and period <  5
+                    and period < 5
          ),
 
          shots_agg as (
@@ -97,8 +96,7 @@ group by 2,3,4,5
                                              on r.id = p.playerID
 
                           where event in ('Missed Shot')
-                          and p.gameType = 'R'
-                          and period <  5),
+                            and period < 5),
 
          missed_shots_agg as (
              Select gamePk,
@@ -128,8 +126,7 @@ group by 2,3,4,5
                                         on r.id = p.playerID
 
                      where event = 'Faceoff'
-                     and p.gameType = 'R'
-                     and period <  5),
+                     and period < 5),
 
          faceoffs_agg as (
              Select gamePk,
@@ -140,37 +137,70 @@ group by 2,3,4,5
                     sum(fo_lost) fol
              from facoffs
 
-             group by 1, 2, 3)
+             group by 1, 2, 3),
 
-         Select p.gamePk,
-              p.playerID,
-              dt,
-              p.player_name,
-              p.abbreviation    position,
-              g                 goals,
-              a                 assist,
-              g + a             points,
-              sog,
-              fow               faceoffs_won,
-              fol               faceoffs_lost,
-              fow + fol         faceoffs_taken,
-              fow / (fow + fol) faceoff_wonp,
-              sum(g) over (partition by playerID order by gamePk) as running_goals,
-            sum(a) over (partition by playerID order by gamepk) as running_assists,
-                sum(g + a ) over (partition by playerID order by gamePk) as running_pts
+         stats as (Select p.gamePk,
+                          p.playerID,
+                          p.player_name,
+                          p.abbreviation    position,
+                          g                 goals,
+                          a                 assist,
+                          g + a             points,
+                          sog,
+                          fow               faceoffs_won,
+                          fol               faceoffs_lost,
+                          fow + fol         faceoffs_taken,
+                          fow / (fow + fol) faceoff_wonp,
+                          ga                goals_allowed,
+                          saves
 
-       from participants p
+                   from participants p
 
-                left join shots_agg s
-                          on s.gamePk = p.gamePk and s.playerID = p.playerID
+                            left join shots_agg s
+                                      on s.gamePk = p.gamePk and s.playerID = p.playerID
 
-                left join goal_agg g
-                          on g.gamePk = p.gamePk and g.playerID = p.playerID
+                            left join goal_agg g
+                                      on g.gamePk = p.gamePk and g.playerID = p.playerID
 
-                left join missed_shots_agg ms
-                          on ms.gamePk = p.gamePk and ms.playerID = p.playerID
+                            left join missed_shots_agg ms
+                                      on ms.gamePk = p.gamePk and ms.playerID = p.playerID
 
-                left join faceoffs_agg f
-                          on f.gamePk = p.gamePk and f.playerID = p.playerID)
+                            left join faceoffs_agg f
+                                      on f.gamePk = p.gamePk and f.playerID = p.playerID),
 
+    player_stats as (Select playerID,
+           position,
+           player_name,
+           count(gamepk)                           gp,
+           sum(goals)                              goals,
+           sum(assist)                             assists,
+           sum(points)                             points,
+           sum(sog)                                sog,
+           sum(faceoffs_won)                       faceoffs_won,
+           sum(faceoffs_lost)                      faceoffs_lost,
+           sum(faceoffs_won) / sum(faceoffs_taken) faceoff_percentage
+    from stats
+    where position <> 'G'
+    group by 1, 2, 3)
 
+Select id player_id,
+       fullName,
+       team_id,
+       jerseyNumber,
+       position,
+       gp,
+       goals,
+       assists,
+       points,
+       sog,
+       faceoffs_won,
+       faceoffs_lost,
+       faceoff_percentage
+
+from d_team_rosters r
+
+left join player_stats s
+on s.playerID = r.id
+
+where r.abbreviation != 'G'
+);

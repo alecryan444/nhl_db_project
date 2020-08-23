@@ -36,14 +36,16 @@ create table d_game_goalie_stats as (
                      and playerType = 'Goalie'
                      and period < 5
 
-                   group by 1, 2, 3)
+                   group by 1, 2, 3),
 
 
-    Select g.gamePk,
+    final_agg as (Select g.gamePk,
            g.dateTime,
            g.playerID,
            g.player_name,
-           ifnull(ga, 0) ga,
+           'G' as position,
+
+           ifnull(ga.ga, 0) ga,
            ifnull(shots, 0) shots,
            ifnull(min, 0) min
 
@@ -66,8 +68,28 @@ create table d_game_goalie_stats as (
                        on toi.gamePk = g.gamePk and toi.player_id = g.playerID
 
              left join shots s
-                       on s.playerID = g.playerID and s.gamePk = g.gamePk
+                       on s.playerID = g.playerID and s.gamePk = g.gamePk)
 
 
-    where left(g.gamePk, 4) = 2019
-)
+    Select g.gamePk,
+       g.dateTime,
+       g.playerID,
+       g.player_name,
+       g.position,
+       t.team_id,
+       i.team_name,
+       g.ga,
+       g.shots,
+       g.min
+    from final_agg g
+
+     left join d_team_rosters t
+            on t.id = g.playerID
+
+            left join d_team_standings i
+            on i.team_id = t.team_id
+
+
+
+    )
+
